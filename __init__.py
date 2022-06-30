@@ -18,10 +18,10 @@ from pathlib import Path
 from .model import lottery,lottery_group
 from .utils import kaijiang
 
-kjnum_max = Config.get_config("caipiao", "KJNUM_MAX")
-oneltcost = Config.get_config("caipiao", "ONELTCOST")
+kjnum_max = Config.get_config("luckyball", "KJNUM_MAX")
+oneltcost = Config.get_config("luckyball", "ONELTCOST")
 
-#欢迎自己魔改（不想花时间实现其他功能
+
 
 __zx_plugin_name__ = "幸运球"
 __plugin_usage__ = f"""
@@ -171,8 +171,8 @@ async def handle_time(
 @buyltnum.handle()
 async def _(event: GroupMessageEvent, arg: Message = CommandArg()):
     msg = arg.extract_plain_text().strip()
-    kjnum_max = Config.get_config("caipiao", "KJNUM_MAX")
-    oneltcost = Config.get_config("caipiao", "ONELTCOST")
+    kjnum_max = Config.get_config("luckyball", "KJNUM_MAX")
+    oneltcost = Config.get_config("luckyball", "ONELTCOST")
     user = await lottery.ensure(event.user_id, event.group_id)
     if user.numberlt > 0:
         await buyltnum.finish(f"你今天已经祈祷过了，数字是{user.numberlt}")

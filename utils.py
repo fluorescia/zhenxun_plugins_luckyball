@@ -7,7 +7,7 @@ import random
 from .model import lottery,lottery_group
 
 async def kaijiang(groupid):
-    kjnum_max = Config.get_config("caipiao", "KJNUM_MAX")
+    kjnum_max = Config.get_config("luckyball", "KJNUM_MAX")
 
     #出开奖号码，计算$中奖人数$总参与人数
     winnumber = random.randint(1, kjnum_max)
