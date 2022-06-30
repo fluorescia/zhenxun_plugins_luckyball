@@ -6,10 +6,9 @@ from nonebot.params import CommandArg, Arg
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.typing import T_State
-
 from models.bag_user import BagUser
 from configs.config import Config
-from utils.utils import scheduler
+from utils.utils import scheduler, get_message_text, is_number
 from services.log import logger
 
 import re
@@ -26,7 +25,7 @@ usage：
     奖励为所有人花费总额，若无人获奖累计到下一次
     开奖后清空玩家号码
     指令：
-        祈祷数字[1-30]
+        祈祷数字[num]
         #数据查看：
             我的幸运球
             群幸运球统计
@@ -40,7 +39,7 @@ usage：
         定时幸运球设置18:00
 """.strip()
 __plugin_des__ = "另一种形式的刮刮乐（"
-__plugin_type__ = ("金币相关",)
+__plugin_type__ = ("群内小游戏",)
 __plugin_cmd__ = [
     "祈祷数字",
     "我的幸运球",
@@ -170,23 +169,28 @@ async def _(event: GroupMessageEvent, arg: Message = CommandArg()):
     kjnum_max = Config.get_config("luckyball", "KJNUM_MAX")
     oneltcost = Config.get_config("luckyball", "ONELTCOST")
     user = await lottery.ensure(event.user_id, event.group_id)
+
     if user.numberlt > 0:
         await buyltnum.finish(f"你今天已经祈祷过了，数字是{user.numberlt}")
-    num = int(msg)
-    if num < 1 or num > kjnum_max:     
-        await buyltnum.finish(f"请输入1-{kjnum_max}的数字")
-    uid = event.user_id
-    group = event.group_id
-    gold = await BagUser.get_gold(uid, group)
     
-    if gold >= oneltcost:
-        await BagUser.spend_gold(uid, group, oneltcost)
-        await lottery.addltnum(uid, group, num, oneltcost)              #写入玩家购买的号码，玩家加祈祷数+1,增加玩家累计消费
-        await lottery_group.caipiaoleijiadd(group,oneltcost)             #增加群累计奖金池，群当日祈祷人数+1，群总祈祷次数+1
-        await buyltnum.finish(f"恭喜你使用{oneltcost}金币祈祷了数字{num}")
+    if is_number(msg):
+        num = int(msg)
+        if num < 1 or num > kjnum_max:     
+            await buyltnum.finish(f"请输入1-{kjnum_max}的数字")
+            
+        uid = event.user_id
+        group = event.group_id
+        gold = await BagUser.get_gold(uid, group)
+        
+        if gold >= oneltcost:
+            await BagUser.spend_gold(uid, group, oneltcost)
+            await lottery.addltnum(uid, group, num, oneltcost)              #写入玩家购买的号码，玩家加祈祷数+1,增加玩家累计消费
+            await lottery_group.caipiaoleijiadd(group,oneltcost)             #增加群累计奖金池，群当日祈祷人数+1，群总祈祷次数+1
+            await buyltnum.finish(f"恭喜你使用{oneltcost}金币祈祷了数字{num}")
+        else:
+            await buyltnum.finish("你的钱好像不够诶")
     else:
-        await buyltnum.finish("你的钱好像不够诶")
-
+        await buyltnum.finish(f"号码只能是数字")
 
 #手动开奖
 @shoudong.handle()
