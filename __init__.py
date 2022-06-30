@@ -19,7 +19,7 @@ from .utils import kaijiang
 
 
 __zx_plugin_name__ = "幸运球"
-__plugin_usage__ = f"""
+__plugin_usage__ = """
 usage：
     玩家花费金币购买一个号数，每天固定一个时间开奖。
     奖励为所有人花费总额，若无人获奖累计到下一次
