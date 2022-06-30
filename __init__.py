@@ -18,19 +18,15 @@ from pathlib import Path
 from .model import lottery,lottery_group
 from .utils import kaijiang
 
-kjnum_max = Config.get_config("luckyball", "KJNUM_MAX")
-oneltcost = Config.get_config("luckyball", "ONELTCOST")
-
-
 
 __zx_plugin_name__ = "幸运球"
 __plugin_usage__ = f"""
 usage：
-    玩家花费{oneltcost}购买一个号数，每天固定一个时间开奖。
+    玩家花费金币购买一个号数，每天固定一个时间开奖。
     奖励为所有人花费总额，若无人获奖累计到下一次
     开奖后清空玩家号码
     指令：
-        祈祷数字[1-{kjnum_max}]
+        祈祷数字[1-30]
         #数据查看：
             我的幸运球
             群幸运球统计
@@ -176,13 +172,9 @@ async def _(event: GroupMessageEvent, arg: Message = CommandArg()):
     user = await lottery.ensure(event.user_id, event.group_id)
     if user.numberlt > 0:
         await buyltnum.finish(f"你今天已经祈祷过了，数字是{user.numberlt}")
-    try:
-        num = int(msg)
-        if num < 1 or num > kjnum_max:     
-            await buyltnum.finish(f"请输入1-{kjnum_max}的数字")
-    except:
-        await buyltnum.finish()
-
+    num = int(msg)
+    if num < 1 or num > kjnum_max:     
+        await buyltnum.finish(f"请输入1-{kjnum_max}的数字")
     uid = event.user_id
     group = event.group_id
     gold = await BagUser.get_gold(uid, group)
