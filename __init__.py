@@ -10,16 +10,15 @@ from models.bag_user import BagUser
 from configs.config import Config
 from utils.utils import scheduler, get_message_text, is_number
 from services.log import logger
-
+from models.group_member_info import GroupInfoUser
 import re
 from pathlib import Path
-
+import random
 from .model import lottery,lottery_group
-from .utils import kaijiang
 
 
 __zx_plugin_name__ = "幸运球"
-__plugin_usage__ = """
+__plugin_usage__ = f"""
 usage：
     玩家花费金币购买一个号数，每天固定一个时间开奖。
     奖励为所有人花费总额，若无人获奖累计到下一次
@@ -54,18 +53,11 @@ __plugin_settings__ = {
     "cmd": ["祈祷数字","我的幸运球","群幸运球统计"],
 }
 
-__plugin_configs__ = {
-    "ONELTCOST": {
-        "value": 200, 
-        "help": "买一次花费的金币", 
-        "default_value": 200
-    },
-    "KJNUM_MAX": {
-        "value": 30,
-        "help": "限制开奖和购买号数范围，1-？", 
-        "default_value": 30
-    },
-}
+
+
+kjnum_max = 30   #限制开奖和购买号数范围，1-？
+oneltcost = 200  #买一次花费的金币
+#如果想要不同群不同的值，请自己修改代码。简单的可以在函数里添加if event.group_id。复杂的可以往数据库lottery_group表里添加列，然后写函数功能。
 
 kj_matcher = on_command("定时幸运球", aliases={"开球时间"}, priority=5, permission=SUPERUSER, block=True)
 shoudong = on_command("手动开启幸运球", priority=5, permission=SUPERUSER, block=True)
@@ -166,8 +158,6 @@ async def handle_time(
 @buyltnum.handle()
 async def _(event: GroupMessageEvent, arg: Message = CommandArg()):
     msg = arg.extract_plain_text().strip()
-    kjnum_max = Config.get_config("luckyball", "KJNUM_MAX")
-    oneltcost = Config.get_config("luckyball", "ONELTCOST")
     user = await lottery.ensure(event.user_id, event.group_id)
 
     if user.numberlt > 0:
@@ -198,6 +188,55 @@ async def _(bot: Bot, event: GroupMessageEvent):
     pst = await kaijiang(event.group_id)
     logger.info(f"手动开奖成功")
     await shoudong.finish(f"{pst}")
+
+#开奖函数
+async def kaijiang(groupid):
+    #出开奖号码，计算$中奖人数$总参与人数
+    winnumber = random.randint(1, kjnum_max)
+    
+    win_list = []
+    #计算中奖人名单
+    try:
+        user_list = await lottery.get_all_users(groupid)     
+        for user in user_list:
+            if user.numberlt > 0:
+                if user.numberlt == winnumber:
+                    win_list.append(user.user_qq)
+    except:
+        logger.error("开奖错误")
+
+    group_ensure = await lottery_group.ensure_group(groupid)
+
+    winplayernum = 	len(win_list)                                         #中奖人数
+    ptin = group_ensure.groupdaydonum                                     #参与人数
+    total_gold = group_ensure.caipiaoleiji                                #今日奖励
+    strpost = f"今日幸运号码是:{winnumber}，祈祷人数：{ptin}\n幸运者："
+    if winplayernum > 0:
+        #结算
+        getgold = int(total_gold/winplayernum)                                  #每个中奖者能得金币
+        for x in win_list:
+            await BagUser.add_gold(x, groupid,getgold)
+            await lottery.windataup(x,groupid,getgold)
+                     
+            niname = (await GroupInfoUser.get_member_info(x, groupid)).user_name
+            strpost += f'{niname}、'
+        await lottery_group.caipiaoleijiset(groupid, 0)                         #清空奖池
+        
+        strpost = strpost[:-1] + f"。每人获得{getgold}枚金币"   
+    else:
+        strpost = f"今天的幸运数字是：{winnumber}。没有人好运呢，奖励累计到下一天。当前累计金币：{total_gold}"
+
+    #重置玩家购买号数，清空lottery_group的当日祈祷人数
+    try:
+        user_list2 = await lottery.get_all_users(groupid)
+        for user in user_list2:
+            await user.update(numberlt=0).apply()
+        logger.info(f"重置群成员每日购买号数成功")
+        await lottery_group.caipiao_update(groupid,winplayernum)                #增加群累计中奖人数，清空群每日祈祷人数
+        logger.info(f"重置群每日祈祷人数成功")
+    except Exception as e:
+        logger.error(f"重置每日购买彩票错误 e:{e}")
+    return strpost
 
 #数据查看
 @record.handle()
