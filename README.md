@@ -1,4 +1,4 @@
-# zhenxun_plugins_TZseries
+# zhenxun_plugins_luckyball
  自己各种参考其他插件写出的一个功能，代码水平有限
 
 ## 功能：
