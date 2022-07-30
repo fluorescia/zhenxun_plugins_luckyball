@@ -155,7 +155,7 @@ async def kjtime(
                 try:
                     moyu_state += f"\n基础奖池:{group_id_info['pool']}"
                 except KeyError:
-                    moyu_state += "\n基础奖池:1000(默认)"
+                    moyu_state += "\n基础奖池:范围*花费(默认)"
 
                 try:
                     moyu_state += f"\ntax:{group_id_info['tax']}%"
@@ -310,11 +310,16 @@ async def kaijiang(groupid):
     
     if winplayernum > 0:
         ##结算
-        #获取基础奖池设置,若未设置则使用默认值1000
+        #获取一次花费的金币，若未定义则设置为默认的200
+        try:
+            oneltcost = int(subscribe_list[str(groupid)]["gold"])
+        except KeyError:
+            oneltcost = 200
+        #获取基础奖池设置,若未设置则使用范围*花费
         try:
             poolgold = int(subscribe_list[str(groupid)]["pool"])
         except KeyError:
-            poolgold = 1000
+            poolgold = oneltcost*kjnum_max
         #获取税收参数,若未设置则使用默认值30
         try:
             goldtax = int(subscribe_list[str(groupid)]["tax"])/100
