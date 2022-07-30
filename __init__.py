@@ -28,7 +28,7 @@ usage：
             群幸运球统计
         # 超级用户指令：
             手动开启幸运球
-            定时幸运球 状态|设置?:?|禁用|花费|范围
+            定时幸运球 状态|设置?:?|禁用|花费|范围|奖池|税
     举例：
         祈祷数字23
         我的幸运球
@@ -37,8 +37,10 @@ usage：
         定时幸运球状态
         定时幸运球设置18:00
         定时幸运球禁用
-        定时幸运球花费300
+        定时幸运球花费300 
         定时幸运球范围50 #注意这里代表设置范围是1-50
+        定时幸运球奖池1000 #用于设置中奖后重置奖池的基础金币
+        定时幸运球税30 #如果有人中奖，那么将会被拿走30%的奖励
 
 """.strip()
 __plugin_des__ = "另一种形式的刮刮乐（"
@@ -143,10 +145,22 @@ async def kjtime(
                     moyu_state += f"\n花费金币:{group_id_info['gold']}"
                 except KeyError:
                     moyu_state += "\n花费金币:200(默认)"
+
                 try:
                     moyu_state += f"\n祈祷范围:1-{group_id_info['num']}"
                 except KeyError:
                     moyu_state += "\n祈祷范围:1-30(默认)"
+
+                try:
+                    moyu_state += f"\n基础奖池:{group_id_info['pool']}"
+                except KeyError:
+                    moyu_state += "\n基础奖池:1000(默认)"
+
+                try:
+                    moyu_state += f"\ntax:{group_id_info['tax']}%"
+                except KeyError:
+                    moyu_state += "\ntax:30%(默认)"                
+
             await matcher.finish(moyu_state)
 
         elif "设置" in cmdarg:
@@ -174,7 +188,7 @@ async def kjtime(
         
         elif "范围" in cmdarg:
             match = re.search(r"-?[1-9]\d*", cmdarg)
-            if int(match[0])>0:
+            if int(match[0])>1:
                 try:
                     subscribe_list[str(event.group_id)]["num"] = match[0]
                 except KeyError:
@@ -184,6 +198,30 @@ async def kjtime(
             else:
                 await kj_matcher.finish("设置范围失败，请输入正确的格式，格式为：定时幸运球范围[最大数字]")
 
+        elif "奖池" in cmdarg:
+            match = re.search(r"-?[1-9]\d*", cmdarg)
+            if int(match[0])>0:
+                try:
+                    subscribe_list[str(event.group_id)]["pool"] = match[0]
+                except KeyError:
+                    subscribe_list[str(event.group_id)] = {"pool":match[0]}
+                save_subscribe()
+                await kj_matcher.finish(f"每日幸运球的中奖后重置奖池金币设置为：{match[0]}")
+            else:
+                await kj_matcher.finish("设置基础奖池失败，请输入正确的格式，格式为：定时幸运球奖池[数字]")
+
+        elif "税" in cmdarg:
+            match = re.search(r"-?[1-9]\d*", cmdarg)
+            if int(match[0]) > 0 and int(match[0]) < 100:
+                try:
+                    subscribe_list[str(event.group_id)]["tax"] = match[0]
+                except KeyError:
+                    subscribe_list[str(event.group_id)] = {"tax":match[0]}
+                save_subscribe()
+                await kj_matcher.finish(f"每日幸运球tax设置为：{match[0]}")
+            else:
+                await kj_matcher.finish("设置tax失败，请输入正确的格式，格式为：定时幸运球税[百分之多少]")
+    
         elif "禁用" in cmdarg or "关闭" in cmdarg:
             del subscribe_list[str(event.group_id)]
             save_subscribe()
@@ -245,12 +283,12 @@ async def _(bot: Bot, event: GroupMessageEvent):
 async def kaijiang(groupid):
     #获取购买最大号码，若未定义则设置为默认的30
     try:
-        kjnum_max = subscribe_list[str(groupid)]["num"]
+        kjnum_max = int(subscribe_list[str(groupid)]["num"])
     except KeyError:
         kjnum_max = 30
 
     #出开奖号码
-    winnumber = random.randint(1, int(kjnum_max))
+    winnumber = random.randint(1, kjnum_max)
 
     #计算中奖人名单
     win_list = []
@@ -268,9 +306,22 @@ async def kaijiang(groupid):
     winplayernum = 	len(win_list)                                         #中奖人数
     ptin = group_ensure.groupdaydonum                                     #参与人数
     total_gold = group_ensure.caipiaoleiji                                #今日奖励
-    strpost = f"今日幸运号码是:{winnumber}，祈祷人数：{ptin}\n幸运者："
+    
     if winplayernum > 0:
-        #结算
+        ##结算
+        #获取基础奖池设置,若未设置则使用默认值1000
+        try:
+            poolgold = int(subscribe_list[str(groupid)]["pool"])
+        except KeyError:
+            poolgold = 1000
+        #获取税收参数,若未设置则使用默认值30
+        try:
+            goldtax = int(subscribe_list[str(groupid)]["tax"])/100
+        except KeyError:
+            goldtax = 0.3
+
+        total_gold = (1-goldtax)*total_gold                                     #收税后总奖励金币
+        strpost = f"今日幸运号码是:{winnumber}，祈祷人数：{ptin}\n幸运者："
         getgold = int(total_gold/winplayernum)                                  #每个中奖者能得金币
         for x in win_list:
             await BagUser.add_gold(x, groupid,getgold)
@@ -278,9 +329,10 @@ async def kaijiang(groupid):
                      
             niname = (await GroupInfoUser.get_member_info(x, groupid)).user_name
             strpost += f'{niname}、'
-        await lottery_group.caipiaoleijiset(groupid, 0)                         #清空奖池
         
-        strpost = strpost[:-1] + f"。每人获得{getgold}枚金币"   
+        await lottery_group.caipiaoleijiset(groupid, poolgold)                         #清空奖池
+        
+        strpost = strpost[:-1] + f"。每人获得{getgold}枚金币。"   
     else:
         strpost = f"今天的幸运数字是：{winnumber}。祈祷人数：{ptin}。\n没有人好运呢，奖励累计到下一天。当前累计金币：{total_gold}"
 
