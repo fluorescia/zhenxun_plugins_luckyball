@@ -2,13 +2,11 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, Bot, GROUP
 from nonebot.adapters.onebot.v11 import  GroupMessageEvent  , Message
 from nonebot import on_command, get_bot, get_driver, logger
 from nonebot.adapters.onebot.v11.permission import GROUP
-from nonebot.params import CommandArg, Arg
+from nonebot.params import CommandArg
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
-from nonebot.typing import T_State
 from models.bag_user import BagUser
-from configs.config import Config
-from utils.utils import scheduler, get_message_text, is_number
+from utils.utils import scheduler, is_number
 from services.log import logger
 from models.group_member_info import GroupInfoUser
 import re
@@ -18,7 +16,7 @@ from .model import lottery,lottery_group
 
 
 __zx_plugin_name__ = "幸运球"
-__plugin_usage__ = f"""
+__plugin_usage__ = """
 usage：
     玩家花费金币购买一个号数，每天固定一个时间开奖。
     奖励为所有人花费总额，若无人获奖累计到下一次
@@ -30,12 +28,18 @@ usage：
             群幸运球统计
         # 超级用户指令：
             手动开启幸运球
-            定时幸运球 状态|设置?:?|禁用
+            定时幸运球 状态|设置?:?|禁用|花费|范围
     举例：
         祈祷数字23
         我的幸运球
+        群幸运球统计
+        #以下是超级用户指令
         定时幸运球状态
         定时幸运球设置18:00
+        定时幸运球禁用
+        定时幸运球花费300
+        定时幸运球范围50 #注意这里代表设置范围是1-50
+
 """.strip()
 __plugin_des__ = "另一种形式的刮刮乐（"
 __plugin_type__ = ("群内小游戏",)
@@ -55,9 +59,8 @@ __plugin_settings__ = {
 
 
 
-kjnum_max = 30   #限制开奖和购买号数范围，1-？
-oneltcost = 200  #买一次花费的金币
-#如果想要不同群不同的值，请自己修改代码。简单的可以在函数里添加if event.group_id。复杂的可以往数据库lottery_group表里添加列，然后写函数功能。
+
+
 
 kj_matcher = on_command("定时幸运球", aliases={"开球时间"}, priority=5, permission=SUPERUSER, block=True)
 shoudong = on_command("手动开启幸运球", priority=5, permission=SUPERUSER, block=True)
@@ -71,24 +74,31 @@ try:
 except ModuleNotFoundError:
     import json
 
+
+#打开json
 subscribe = Path(__file__).parent / "subscribe.json"
 subscribe_list = json.loads(subscribe.read_text("utf-8")) if subscribe.is_file() else {}
 def save_subscribe():
-    subscribe.write_text(json.dumps(subscribe_list), encoding="utf-8")
+    subscribe.write_text(json.dumps(subscribe_list, indent = 4, ensure_ascii = False), encoding="utf-8")
 
+
+#定时任务相关
 driver = get_driver()
 @driver.on_startup
 async def subscribe_jobs():
     for group_id, info in subscribe_list.items():
-        scheduler.add_job(
-            push_calendar,
-            "cron",
-            args=[group_id],
-            id=f"lottery_calendar_{group_id}",
-            replace_existing=True,
-            hour=info["hour"],
-            minute=info["minute"],
-        )
+        try:
+            scheduler.add_job(
+                push_calendar,
+                "cron",
+                args=[group_id],
+                id=f"lottery_calendar_{group_id}",
+                replace_existing=True,
+                hour=info["hour"],
+                minute=info["minute"],
+            )
+        except KeyError:
+            pass
 
 async def push_calendar(group_id: str):
     bot = get_bot()
@@ -97,7 +107,11 @@ async def push_calendar(group_id: str):
     await bot.send_group_msg(group_id=int(group_id), message=pst)
 
 def calendar_subscribe(group_id: str, hour: str, minute: str) -> None:
-    subscribe_list[group_id] = {"hour": hour, "minute": minute}
+    try:
+        subscribe_list[group_id]["hour"] = hour
+        subscribe_list[group_id]["minute"] = minute
+    except KeyError:
+        subscribe_list[group_id] = {"hour":hour,"minute":minute}
     save_subscribe()
     scheduler.add_job(
         push_calendar,
@@ -110,6 +124,8 @@ def calendar_subscribe(group_id: str, hour: str, minute: str) -> None:
     )
     logger.debug(f"群[{group_id}]设置每日开奖时间为：{hour}:{minute}")
 
+
+#用于指令设置幸运球的各参数
 @kj_matcher.handle()
 async def kjtime(
     event: GroupMessageEvent, matcher: Matcher, args: Message = CommandArg()
@@ -123,35 +139,59 @@ async def kjtime(
                 moyu_state += (
                     f"\n幸运球时间: {group_id_info['hour']}:{group_id_info['minute']}"
                 )
+                try:
+                    moyu_state += f"\n花费金币:{group_id_info['gold']}"
+                except KeyError:
+                    moyu_state += "\n花费金币:200(默认)"
+                try:
+                    moyu_state += f"\n祈祷范围:1-{group_id_info['num']}"
+                except KeyError:
+                    moyu_state += "\n祈祷范围:1-30(默认)"
             await matcher.finish(moyu_state)
+
         elif "设置" in cmdarg:
             if ":" in cmdarg or "：" in cmdarg:
-                matcher.set_arg("time_arg", args)
+                match = re.search(r"(\d*)[:：](\d*)", cmdarg)
+                if match and match[1] and match[2]:
+                    calendar_subscribe(str(event.group_id), match[1], match[2])
+                    await kj_matcher.finish(f"每日幸运球的时间已设置为：{match[1]}:{match[2]}")
+                else:
+                    await kj_matcher.finish("设置时间失败，请输入正确的格式，格式为：定时幸运球设置[小时]:[分钟]")
+            else:
+                await kj_matcher.finish("设置时间失败，请输入正确的格式，定时幸运球设置[小时]:[分钟]")
+
+        elif "花费" in cmdarg:
+            match = re.search(r"-?[1-9]\d*", cmdarg)
+            if match[0]:
+                try:
+                    subscribe_list[str(event.group_id)]["gold"] = match[0]
+                except KeyError:
+                    subscribe_list[str(event.group_id)] = {"gold":match[0]}
+                save_subscribe()
+                await kj_matcher.finish(f"每人幸运球的花费已设置为：{match[0]}金币")
+            else:
+                await kj_matcher.finish("设置花费失败，请输入正确的格式，格式为：定时幸运球花费[金币]")
+        
+        elif "范围" in cmdarg:
+            match = re.search(r"-?[1-9]\d*", cmdarg)
+            if int(match[0])>0:
+                try:
+                    subscribe_list[str(event.group_id)]["num"] = match[0]
+                except KeyError:
+                    subscribe_list[str(event.group_id)] = {"num":match[0]}
+                save_subscribe()
+                await kj_matcher.finish(f"每日幸运球的范围已设置为：1-{match[0]}")
+            else:
+                await kj_matcher.finish("设置范围失败，请输入正确的格式，格式为：定时幸运球范围[最大数字]")
+
         elif "禁用" in cmdarg or "关闭" in cmdarg:
             del subscribe_list[str(event.group_id)]
             save_subscribe()
             scheduler.remove_job(f"lottery_calendar_{event.group_id}")
             await matcher.finish("每日幸运球已禁用")
+
         else:
             await matcher.finish("修改幸运球的参数不正确")
-
-@kj_matcher.got("time_arg", prompt="请发送每日定时幸运球的时间，格式为：小时:分钟")
-async def handle_time(
-    event: GroupMessageEvent, state: T_State, time_arg: Message = Arg()
-):
-    state.setdefault("max_times", 0)
-    time = time_arg.extract_plain_text()
-    if any(cancel in time for cancel in ["取消", "放弃", "退出"]):
-        await kj_matcher.finish("已退出修改幸运球时间设置")
-    match = re.search(r"(\d*)[:：](\d*)", time)
-    if match and match[1] and match[2]:
-        calendar_subscribe(str(event.group_id), match[1], match[2])
-        await kj_matcher.finish(f"每日幸运球的时间已设置为：{match[1]}:{match[2]}")
-    else:
-        state["max_times"] += 1
-        if state["max_times"] >= 3:
-            await kj_matcher.finish("你的错误次数过多，已退出定时幸运球时间设置")
-        await kj_matcher.reject("设置时间失败，请输入正确的格式，格式为：小时:分钟")
 #↑
 
 #购买彩票         
@@ -163,9 +203,21 @@ async def _(event: GroupMessageEvent, arg: Message = CommandArg()):
     if user.numberlt > 0:
         await buyltnum.finish(f"你今天已经祈祷过了，数字是{user.numberlt}")
     
+    #获取购买最大号码，若未定义则设置为默认的30
+    try:
+        kjnum_max = subscribe_list[str(event.group_id)]["num"]
+    except KeyError:
+        kjnum_max = 30
+    
+    #获取一次花费的金币，若未定义则设置为默认的200
+    try:
+        oneltcost = int(subscribe_list[str(event.group_id)]["gold"])
+    except KeyError:
+        oneltcost = 200
+    
     if is_number(msg):
         num = int(msg)
-        if num < 1 or num > kjnum_max:     
+        if num < 1 or num > int(kjnum_max):     
             await buyltnum.finish(f"请输入1-{kjnum_max}的数字")
             
         uid = event.user_id
@@ -191,11 +243,17 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
 #开奖函数
 async def kaijiang(groupid):
-    #出开奖号码，计算$中奖人数$总参与人数
-    winnumber = random.randint(1, kjnum_max)
-    
-    win_list = []
+    #获取购买最大号码，若未定义则设置为默认的30
+    try:
+        kjnum_max = subscribe_list[str(groupid)]["num"]
+    except KeyError:
+        kjnum_max = 30
+
+    #出开奖号码
+    winnumber = random.randint(1, int(kjnum_max))
+
     #计算中奖人名单
+    win_list = []
     try:
         user_list = await lottery.get_all_users(groupid)     
         for user in user_list:
@@ -205,7 +263,7 @@ async def kaijiang(groupid):
     except:
         logger.error("开奖错误")
 
-    group_ensure = await lottery_group.ensure_group(groupid)
+    group_ensure = await lottery_group.ensure_group(groupid)              #获取幸运球群组信息
 
     winplayernum = 	len(win_list)                                         #中奖人数
     ptin = group_ensure.groupdaydonum                                     #参与人数
@@ -224,7 +282,7 @@ async def kaijiang(groupid):
         
         strpost = strpost[:-1] + f"。每人获得{getgold}枚金币"   
     else:
-        strpost = f"今天的幸运数字是：{winnumber}。没有人好运呢，奖励累计到下一天。当前累计金币：{total_gold}"
+        strpost = f"今天的幸运数字是：{winnumber}。祈祷人数：{ptin}。\n没有人好运呢，奖励累计到下一天。当前累计金币：{total_gold}"
 
     #重置玩家购买号数，清空lottery_group的当日祈祷人数
     try:
@@ -262,3 +320,4 @@ async def _(event: GroupMessageEvent):
         f'群总祈祷次数：{groupe.groupalldonum}\n'
         f'群总幸运人次：{groupe.groupwintime}'
     )
+
