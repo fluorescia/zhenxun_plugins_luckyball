@@ -201,7 +201,7 @@ async def kjtime(
 
         elif "奖池" in cmdarg:
             match = re.search(r"-?[1-9]\d*", cmdarg)
-            if int(match[0])>0:
+            if int(match[0]) > -2:
                 try:
                     subscribe_list[str(event.group_id)]["pool"] = match[0]
                 except KeyError:
@@ -318,6 +318,8 @@ async def kaijiang(groupid):
         #获取基础奖池设置,若未设置则使用范围*花费
         try:
             poolgold = int(subscribe_list[str(groupid)]["pool"])
+            if poolgold == -1:
+                poolgold = oneltcost*kjnum_max
         except KeyError:
             poolgold = oneltcost*kjnum_max
         #获取税收参数,若未设置则使用默认值30
