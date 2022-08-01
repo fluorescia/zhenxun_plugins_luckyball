@@ -144,7 +144,7 @@ class lottery_group(db.Model):
             await  my.update(groupdaydonum=my.groupdaydonum + 1).apply()
             await  my.update(groupalldonum=my.groupalldonum + 1).apply()
         else:
-            await cls.create( group_id=group_id, caipiaoleiji=num,groupdaydonum=1, groupalldonum=1)
+            await cls.create( group_id=group_id, caipiaoleiji=num+1000,groupdaydonum=1, groupalldonum=1)
     @classmethod
     async def ensure_group(cls,group_id: int):
         """
