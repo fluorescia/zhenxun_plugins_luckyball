@@ -267,7 +267,8 @@ async def _(event: GroupMessageEvent, arg: Message = CommandArg()):
             await BagUser.spend_gold(uid, group, oneltcost)
             await lottery.addltnum(uid, group, num, oneltcost)              #写入玩家购买的号码，玩家加祈祷数+1,增加玩家累计消费
             await lottery_group.caipiaoleijiadd(group,oneltcost)             #增加群累计奖金池，群当日祈祷人数+1，群总祈祷次数+1
-            await buyltnum.finish(f"恭喜你使用{oneltcost}金币祈祷了数字{num}")
+            groupe = await lottery_group.ensure_group(group)
+            await buyltnum.finish(f"恭喜你使用{oneltcost}金币祈祷了数字{num},当前群积累的奖励：{groupe.caipiaoleiji}")
         else:
             await buyltnum.finish("你的钱好像不够诶")
     else:
