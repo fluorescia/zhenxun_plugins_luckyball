@@ -336,7 +336,7 @@ async def kaijiang(groupid):
             await BagUser.add_gold(x, groupid,getgold)
             await lottery.windataup(x,groupid,getgold)
                      
-            niname = (await GroupInfoUser.get_member_info(x, groupid)).user_name
+            niname = (await GroupInfoUser.get_or_none(user_qq=x, group_id=groupid)).user_name
             strpost += f'{niname}、'
         
         await lottery_group.caipiaoleijiset(groupid, poolgold)                         #清空奖池
@@ -349,7 +349,8 @@ async def kaijiang(groupid):
     try:
         user_list2 = await lottery.get_all_users(groupid)
         for user in user_list2:
-            await user.update(numberlt=0).apply()
+            user.numberlt = 0
+            await user.save()
         logger.info(f"重置群成员每日购买号数成功")
         await lottery_group.caipiao_update(groupid,winplayernum)                #增加群累计中奖人数，清空群每日祈祷人数
         logger.info(f"重置群每日祈祷人数成功")
